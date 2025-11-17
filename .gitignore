@@ -2,7 +2,6 @@
 venv/
 .venv/
 
-
 # Environment variables
 .env
 
@@ -29,8 +28,8 @@ wheels/
 *.egg
 MANIFEST
 
-# ChromaDB
-chroma_db/
+# ChromaDB (local persistent store)
+chroma_store/
 
 # IDE
 .vscode/
@@ -42,4 +41,5 @@ chroma_db/
 .DS_Store
 Thumbs.db
 
+# Other temp files
 lesson.md

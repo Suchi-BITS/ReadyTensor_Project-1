@@ -165,7 +165,6 @@ flowchart TD
 Corrective-RAG activates when grounding fails and applies query rewriting and re-retrieval.
 
 ```mermaid
-flowchart TD
 flowchart LR
     Q[Query]
     R1[Initial Retrieval]

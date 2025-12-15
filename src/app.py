@@ -1,206 +1,342 @@
-"""
-app.py — RAG Console Application (LangChain 1.x, enhanced)
-Loads .txt docs, builds embeddings, retrieves context, and answers with
-OpenAI / Groq / Gemini fallback + reranking + token-based chunking.
-"""
-
 import os
+import re
+import numpy as np
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict, List, Tuple, Optional
 from dotenv import load_dotenv
 
-# Load environment
-load_dotenv()
-
-# LangChain imports
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
-from langchain_groq import ChatGroq
-#from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# Local module
 from vectordb import VectorDB
 
-# Config
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# ================== ENV ==================
+
+load_dotenv()
+
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-1.5-flash")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "rag_documents")
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+)
+INTENT_EMBEDDING_MODEL = "text-embedding-3-small"
+
+COLLECTION = os.getenv("CHROMA_COLLECTION_NAME", "rag_documents")
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
+MODEL_COST_PER_1K = 0.00015
 
-def load_documents() -> List[Dict[str, Any]]:
-    """Load all .txt files from data directory"""
-    docs = []
-    for f in DATA_DIR.glob("*.txt"):
-        try:
-            text = f.read_text(encoding="utf-8")
-            docs.append({"content": text, "metadata": {"filename": f.name}})
-        except Exception as e:
-            print(f"[app] Error reading {f.name}: {e}")
-    return docs
+# Semantic acceptance threshold (core fix)
+SEMANTIC_SUPPORT_THRESHOLD = 0.50
 
+# Chunking
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 300
+
+# ================== METRICS ==================
+
+def tokenize(text: str) -> set:
+    return set(re.findall(r"\b[a-z0-9]+\b", text.lower()))
+
+def grounding(answer: str, context: str) -> float:
+    a = tokenize(answer)
+    c = tokenize(context)
+    return len(a & c) / max(len(a), 1)
+
+def coverage(query: str, context: str) -> float:
+    q = tokenize(query)
+    c = tokenize(context)
+    return len(q & c) / max(len(q), 1)
+
+def cosine(a: np.ndarray, b: np.ndarray) -> float:
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+def estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
+
+def estimate_cost(tokens: int) -> float:
+    return round((tokens / 1000) * MODEL_COST_PER_1K, 6)
+
+# ================== EXPLAINABILITY ==================
+
+def explain_decision(
+    strategy: str,
+    query_complexity: str,
+    rewrites_used: int,
+    retrieved_chunks: int,
+    semantic_support: float,
+    grounding_score: float,
+    coverage_score: float,
+    accepted: bool,
+    tokens: int,
+    cost_usd: float,
+    reason: Optional[str] = None
+) -> List[str]:
+
+    lines = []
+    lines.append(f"RAG strategy used: {strategy}")
+    lines.append(f"Query classified as: {query_complexity}")
+    lines.append(f"Query rewrites applied: {rewrites_used}")
+    lines.append(f"Retrieved evidence chunks: {retrieved_chunks}")
+
+    lines.append(f"Semantic support score: {round(semantic_support, 3)}")
+    lines.append(f"Grounding score (diagnostic): {round(grounding_score, 3)}")
+    lines.append(f"Coverage score (diagnostic): {round(coverage_score, 3)}")
+
+    if accepted:
+        lines.append("Answer accepted because semantic support exceeded threshold")
+    else:
+        lines.append(f"Answer rejected: {reason}")
+
+    lines.append(f"Estimated tokens used: {tokens}")
+    lines.append(f"Estimated cost (USD): {round(cost_usd, 6)}")
+
+    return lines
+
+# ================== RAG APP ==================
 
 class RAGApp:
     def __init__(self):
-        print("\n Initializing RAG App (LangChain 1.x Enhanced)")
-        self.vdb = VectorDB(CHROMA_COLLECTION_NAME, EMBEDDING_MODEL)
-        self.llm = self._load_llm()
-        self.prompt_template = ChatPromptTemplate.from_template(
-            "You are a helpful assistant. Use ONLY the context below to answer the question.\n"
-            "Be concise and specific - answer ONLY what is asked.\n"
-            "If asked about a specific topic (like 'Deep Learning'), provide only information about that topic.\n"
-            "Do not include information about other related topics unless specifically asked.\n"
-            "If the context doesn't contain the answer, say 'I don't have enough information to answer that.'\n\n"
-            "Context:\n{context}\n\n"
-            "Question: {question}\n\n"
-            "Provide a focused, concise answer:"
+        print("Initializing Universal Semantic-First Adaptive RAG")
+
+        self.vdb = VectorDB(COLLECTION, EMBEDDING_MODEL)
+        self.llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
+        self.embedder = OpenAIEmbeddings(model=INTENT_EMBEDDING_MODEL)
+
+        self.splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            separators=["\n\n", "\n", ". ", " ", ""]
         )
 
-    def _load_llm(self):
-        """Load LLM with fallback priority: OpenAI -> Groq -> Gemini"""
-        if OPENAI_API_KEY:
-            try:
-                print(f" Using OpenAI model: {OPENAI_MODEL}")
-                return ChatOpenAI(model=OPENAI_MODEL, temperature=0)
-            except Exception as e:
-                print(f"⚠ OpenAI failed: {e}")
-        
-        if GROQ_API_KEY:
-            try:
-                print(f" Using Groq model: {GROQ_MODEL}")
-                return ChatGroq(model=GROQ_MODEL, temperature=0)
-            except Exception as e:
-                print(f"⚠ Groq failed: {e}")
-        
-        '''if GOOGLE_API_KEY:
-            try:
-                print(f" Using Gemini model: {GOOGLE_MODEL}")
-                return ChatGoogleGenerativeAI(model=GOOGLE_MODEL, temperature=0)
-            except Exception as e:
-                print(f"⚠ Gemini failed: {e}")'''
-        
-        print(" No LLM API key found — retrieval-only mode.")
-        return None
+        self.prompt = ChatPromptTemplate.from_template(
+            """You are a domain expert assistant.
 
-    def ingest_data_dir(self):
-        """Ingest all documents from data directory"""
-        docs = load_documents()
-        if docs:
-            self.vdb.add_documents(docs)
-            print(f" Ingested {len(docs)} documents")
-        else:
-            print(" No .txt files found in /data")
+Use ONLY the context below to answer the question.
+If the context does not support the answer, say so clearly.
 
-    def query(self, question: str, n_results: int = 6) -> Dict[str, Any]:
-        """Query the RAG system"""
-        # Search for relevant documents
-        res = self.vdb.search(question, n_results=n_results)
-        docs, metas, scores = res["documents"], res["metadatas"], res["scores"]
+Context:
+{context}
 
-        if not docs:
-            return {
-                "answer": " No relevant context found.",
-                "context": "",
-                "sources": []
-            }
+Question:
+{question}
 
-        # Build context from top results with higher relevance threshold
-        relevant_docs = []
-        relevant_metas = []
-        relevant_scores = []
-        
-        for i, score in enumerate(scores):
-            if score > 0.5:  # Higher threshold for more relevant results
-                relevant_docs.append(docs[i])
-                relevant_metas.append(metas[i])
-                relevant_scores.append(score)
-        
-        if not relevant_docs:
-            return {
-                "answer": " No sufficiently relevant context found.",
-                "context": "",
-                "sources": []
-            }
+Answer:"""
+        )
 
-        # Take only top 2 most relevant chunks to keep answer focused
-        top_k = min(len(relevant_docs), 2)
-        context_parts = []
-        for i in range(top_k):
-            context_parts.append(
-                f"Source: {relevant_metas[i]['filename']}\n"
-                f"Relevance: {relevant_scores[i]:.3f}\n"
-                f"{relevant_docs[i]}"
-            )
-        
-        context = "\n\n---\n\n".join(context_parts)[:1500]  # Reduced context size
+        self.adaptive_classifier_prompt = ChatPromptTemplate.from_template(
+            """Classify the complexity of this query.
 
-        if not self.llm:
-            return {
-                "answer": " No LLM configured.",
-                "context": context,
-                "sources": relevant_metas[:top_k]
-            }
+SIMPLE:
+- Can be answered without documents
 
-        # Generate answer with fallback handling
-        chain = self.prompt_template | self.llm | StrOutputParser()
+MODERATE:
+- Needs one document or section
 
+COMPLEX:
+- Needs synthesis, enumeration, or multiple documents
+
+Query:
+{question}
+
+Respond with exactly one word:
+SIMPLE, MODERATE, COMPLEX
+"""
+        )
+
+    # ---------------- INGEST ----------------
+
+    def ingest(self):
+        docs = []
+
+        for f in DATA_DIR.glob("*.txt"):
+            content = f.read_text(encoding="utf-8").strip()
+            if not content:
+                continue
+
+            chunks = self.splitter.split_text(content)
+
+            for i, ch in enumerate(chunks):
+                docs.append({
+                    "content": ch,
+                    "metadata": {
+                        "filename": f.name,
+                        "chunk_id": i
+                    }
+                })
+
+        self.vdb.add_documents(docs)
+        print(f"Ingested {len(docs)} chunks")
+
+    # ---------------- QUERY REWRITE ----------------
+
+    def rewrite_query(self, query: str) -> List[str]:
+        rewrites = [query]
+
+        rewrite_prompt = ChatPromptTemplate.from_template(
+            """Rewrite the question using synonyms and alternative phrasing
+while preserving meaning.
+
+Question:
+{question}
+
+Return up to 2 variants."""
+        )
+
+        chain = rewrite_prompt | self.llm | StrOutputParser()
         try:
-            answer = chain.invoke({"context": context, "question": question})
-            return {
-                "answer": answer.strip(),
-                "context": context,
-                "sources": relevant_metas[:top_k]
-            }
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "insufficient_quota" in error_msg or "quota" in error_msg:
-                msg = " OpenAI quota exceeded. Please add GROQ_API_KEY or GOOGLE_API_KEY to .env"
-            elif "rate_limit" in error_msg:
-                msg = " Rate limit exceeded. Please try again in a moment."
+            out = chain.invoke({"question": query})
+            for line in out.split("\n"):
+                if line.strip():
+                    rewrites.append(line.strip())
+        except Exception:
+            pass
+
+        return list(dict.fromkeys(rewrites))[:3]
+
+    # ---------------- RETRIEVAL ----------------
+
+    def retrieve(self, queries: List[str], k: int = 6) -> Tuple[str, int]:
+        chunks = []
+        seen = set()
+
+        for q in queries:
+            res = self.vdb.search(q, n_results=12)
+            for i in range(len(res["documents"])):
+                doc = res["documents"][i]
+                sig = doc[:120]
+                if sig not in seen:
+                    seen.add(sig)
+                    chunks.append((doc, res["metadatas"][i]))
+
+        context = "\n\n".join(
+        f"Source: {meta.get('filename', 'unknown_source')}\n{doc}"
+        for doc, meta in chunks[:k]
+        )
+
+        return context[:5000], len(chunks[:k])
+
+    # ---------------- SEMANTIC SUPPORT ----------------
+
+    def semantic_support(self, answer: str, context: str) -> float:
+        a_emb = self.embedder.embed_query(answer)
+        c_emb = self.embedder.embed_query(context)
+        return cosine(a_emb, c_emb)
+
+    # ---------------- GENERATION ----------------
+
+    def generate(self, query: str, context: str) -> str:
+        chain = self.prompt | self.llm | StrOutputParser()
+        return chain.invoke({"context": context, "question": query}).strip()
+
+    # ---------------- RUN ----------------
+
+    def run(self, query: str) -> Dict:
+        classifier = self.adaptive_classifier_prompt | self.llm | StrOutputParser()
+        complexity = classifier.invoke({"question": query}).strip().upper()
+
+        rewrites = self.rewrite_query(query)
+
+        # ---------- SELF / ADAPTIVE / CORRECTIVE ----------
+        attempted_strategy = None
+
+        context, chunks = self.retrieve(rewrites)
+        answer = self.generate(query, context)
+
+        sem = self.semantic_support(answer, context)
+        grd = grounding(answer, context)
+        cov = coverage(query, context)
+
+        if sem >= SEMANTIC_SUPPORT_THRESHOLD:
+            attempted_strategy = "SELF_RAG"
+            accepted = True
+        else:
+            # Adaptive escalation
+            attempted_strategy = "ADAPTIVE_RAG"
+            rewrites = self.rewrite_query(f"Detailed explanation of {query}")
+            context, chunks = self.retrieve(rewrites)
+            answer = self.generate(query, context)
+
+            sem = self.semantic_support(answer, context)
+            grd = grounding(answer, context)
+            cov = coverage(query, context)
+
+            if sem >= SEMANTIC_SUPPORT_THRESHOLD:
+                accepted = True
             else:
-                msg = f" LLM generation failed: {e}"
-            
+                attempted_strategy = "CORRECTIVE_RAG"
+                accepted = False
+
+        tokens = estimate_tokens(context + answer) if accepted else 0
+        cost = estimate_cost(tokens)
+
+        explanation = explain_decision(
+            strategy=attempted_strategy,
+            query_complexity=complexity,
+            rewrites_used=len(rewrites),
+            retrieved_chunks=chunks,
+            semantic_support=sem,
+            grounding_score=grd,
+            coverage_score=cov,
+            accepted=accepted,
+            tokens=tokens,
+            cost_usd=cost,
+            reason="Semantically unsupported answer" if not accepted else None
+        )
+
+        if not accepted:
             return {
-                "answer": msg,
-                "context": context,
-                "sources": relevant_metas[:top_k]
+                "answer": "Unable to provide a reliable answer based on the available documents.",
+                "metrics": {
+                    "strategy": attempted_strategy,
+                    "semantic_support": sem,
+                    "grounding": grd,
+                    "coverage": cov,
+                    "tokens": 0,
+                    "cost_usd": 0.0
+                },
+                "explainability": explanation
             }
 
+        return {
+            "answer": answer,
+            "metrics": {
+                "strategy": attempted_strategy,
+                "semantic_support": sem,
+                "grounding": grd,
+                "coverage": cov,
+                "tokens": tokens,
+                "cost_usd": cost
+            },
+            "explainability": explanation
+        }
+
+# ================== MAIN ==================
 
 def main():
-    print("=== RAG Console App ===")
     app = RAGApp()
-    app.ingest_data_dir()
-    print("\n Ready! Ask a question (type 'exit' to quit):")
+    app.ingest()
+
+    print("\nReady. Type a query or 'exit'.\n")
 
     while True:
-        try:
-            q = input("\n> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n Exiting.")
-            break
-        
-        if not q or q.lower() in ("exit", "quit"):
+        q = input("Enter your query: ").strip()
+        if q.lower() in ("exit", "quit"):
             break
 
-        result = app.query(q)
-        
-        print("\n--- Answer ---")
+        result = app.run(q)
+
+        print("\n--- ANSWER ---")
         print(result["answer"])
-        
-        print("\n--- Retrieved Context ---")
-        print(result["context"][:1500])
-        
-        print("\n--- Sources ---")
-        for s in result["sources"]:
-            print(f"  - {s.get('filename')}")
 
+        print("\n--- METRICS ---")
+        for k, v in result["metrics"].items():
+            print(f"{k}: {v}")
+
+        print("\n--- EXPLAINABILITY ---")
+        for line in result["explainability"]:
+            print(f"- {line}")
 
 if __name__ == "__main__":
     main()

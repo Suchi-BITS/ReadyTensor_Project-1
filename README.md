@@ -39,6 +39,34 @@ project/
 
 ## Architecture Overview
 
+graph TD
+    U[User Query]
+    QR[Semantic Query Rewriting]
+    QC[Query Complexity Classifier]
+    CP[Corpus Semantic Probe]
+    VS[Vector Store<br/>Chroma + Embeddings]
+    RR[Retrieval & Reranking]
+    LLM[LLM Generation]
+    EV[Semantic Evaluation]
+    DEC[Strategy Decision]
+    OUT[Answer + Metrics + Explainability]
+
+    U --> QR
+    QR --> QC
+    QC --> CP
+
+    CP -->|No Retrieval Needed| LLM
+    CP -->|Retrieval Needed| RR
+
+    RR --> VS
+    VS --> RR
+    RR --> LLM
+
+    LLM --> EV
+    EV --> DEC
+    DEC --> OUT
+
+
 ### 1. Document Ingestion
 - Loads all .txt files from the data directory.
 - Splits documents into meaningful chunks:

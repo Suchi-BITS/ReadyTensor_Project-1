@@ -1,17 +1,19 @@
 Universal Semantic-First Adaptive RAG for FinOps Knowledge Systems
 Abstract
 
-Cloud FinOps knowledge systems require high factual grounding, domain awareness, and adaptive retrieval strategies. Traditional Retrieval-Augmented Generation (RAG) pipelines rely on static top-k retrieval, which often leads to irrelevant context injection or hallucinated responses.
+Traditional Retrieval-Augmented Generation (RAG) systems retrieve a fixed number of documents regardless of relevance, query complexity, or the necessity of retrieval itself. This often leads to irrelevant context injection, hallucinations, and poor explainability.
 
-This project presents a Universal Semantic-First Adaptive RAG architecture designed specifically for FinOps and Cloud Cost Intelligence. The system integrates semantic query rewriting, Self-RAG, Adaptive-RAG, and Corrective-RAG, combined with robust retrieval and generation evaluation metrics and explainability, while remaining LangGraph-free and production-ready.
+This project presents a Universal Semantic-First Adaptive RAG system designed for FinOps and Cloud Cost Knowledge Systems. The system integrates query rewriting, Self-RAG, Adaptive-RAG, and Corrective-RAG in a single pipeline. Retrieval and generation are governed by semantic similarity, grounding checks, and adaptive escalation, without relying on LangGraph.
 
-Key Contributions
+The result is a robust, explainable, production-ready RAG architecture that prioritizes semantic correctness over keyword heuristics.
 
-Semantic-first retrieval (cosine similarity over keyword heuristics)
+Features
 
-Query rewriting using semantic expansion and synonym enrichment
+Semantic-first retrieval using cosine similarity
 
-Self-RAG, Adaptive-RAG, and Corrective-RAG in a single pipeline
+Intelligent query rewriting with semantic expansion
+
+Self-RAG, Adaptive-RAG, and Corrective-RAG in one pipeline
 
 Automatic escalation between RAG strategies
 
@@ -21,8 +23,9 @@ Human-readable explainability for every answer
 
 Domain-agnostic design validated on FinOps knowledge corpora
 
-System Architecture
-High-Level Architecture
+LangGraph-free, production-friendly implementation
+
+High-Level System Architecture
 flowchart LR
     U[User]
     QI[Query Intake]
@@ -61,7 +64,7 @@ flowchart LR
     EV --> EX
     EX --> RESP
 
-End-to-End Query Processing Flow
+End-to-End Process Flow
 sequenceDiagram
     participant User
     participant Rewriter
@@ -73,13 +76,13 @@ sequenceDiagram
     participant Evaluator
     participant Explainer
 
-    User->>Rewriter: User Query
+    User->>Rewriter: Submit Query
     Rewriter->>Classifier: Rewritten Query
     Classifier->>RAGController: Complexity Label
 
-    RAGController->>Retriever: Retrieve Context
-    Retriever->>VectorDB: Semantic Search
-    VectorDB-->>Retriever: Relevant Chunks
+    RAGController->>Retriever: Retrieval Request
+    Retriever->>VectorDB: Semantic Similarity Search
+    VectorDB-->>Retriever: Candidate Chunks
     Retriever-->>RAGController: Reranked Context
 
     RAGController->>LLM: Generate Answer
@@ -94,24 +97,25 @@ sequenceDiagram
 
     Explainer-->>User: Answer + Metrics + Explanation
 
-Retrieval Strategy Selection (Adaptive Logic)
-flowchart TD
-    Q[User Query]
-    C[Semantic Complexity Estimation]
-
-    SR[Self-RAG]
-    AR[Adaptive-RAG]
-    CR[Corrective-RAG]
-
-    Q --> C
-    C -->|Low Complexity| SR
-    C -->|Moderate Complexity| AR
-    C -->|High Complexity| CR
-
 RAG Techniques Implemented
-1. Self-RAG
+1. Query Rewriting
 
-Self-RAG verifies whether retrieval and generation are sufficient and grounded before accepting an answer.
+Query rewriting expands the user query semantically using:
+
+Synonyms
+
+Domain context
+
+Conceptual reformulation
+
+Example:
+
+User Query: Workload Behavior Forecasting
+Rewritten: Predictive analysis of workload behavior for cost forecasting and scaling
+
+2. Self-RAG
+
+Self-RAG validates whether the retrieved context and generated answer are sufficiently grounded.
 
 flowchart TD
     Q[Query]
@@ -121,31 +125,25 @@ flowchart TD
 
     Q --> R --> G --> E
     E -->|Grounded| ACCEPT[Accept Answer]
-    E -->|Not Grounded| ESCALATE[Escalate to Corrective-RAG]
+    E -->|Not Grounded| ESCALATE[Escalate]
 
-2. Adaptive-RAG
+3. Adaptive-RAG
 
 Adaptive-RAG dynamically adjusts retrieval depth based on semantic complexity.
-
-Simple → minimal retrieval
-
-Moderate → multi-chunk retrieval
-
-Complex → escalation with correction
 
 flowchart TD
     Q[Query]
     C[Complexity Estimation]
-    R1[Single-Step Retrieval]
-    R2[Multi-Step Retrieval]
+    R1[Light Retrieval]
+    R2[Deep Retrieval]
 
     Q --> C
     C -->|Simple| R1
     C -->|Complex| R2
 
-3. Corrective-RAG
+4. Corrective-RAG
 
-Corrective-RAG activates when retrieval is weak or grounding fails.
+Corrective-RAG activates when grounding fails, performing query rewriting and re-retrieval.
 
 flowchart TD
     Q[Query]
@@ -153,7 +151,7 @@ flowchart TD
     G1[Generate]
     E1[Grounding Check]
 
-    RW[Semantic Query Rewrite]
+    RW[Rewrite Query]
     R2[Corrective Retrieval]
     G2[Regenerate]
     E2[Final Check]
@@ -163,39 +161,32 @@ flowchart TD
     E2 -->|Pass| ACCEPT
     E2 -->|Fail| REJECT
 
-Query Rewriting Strategy
-
-Query rewriting is semantic, not rule-based:
-
-Synonym expansion
-
-Domain context enrichment
-
-Conceptual reformulation
-
-Example:
-
-User Query: "Workload Behavior Forecasting"
-Rewritten: "Predictive analysis of workload behavior for cost forecasting and scaling"
-
 Evaluation Metrics
-Retrieval Quality Metrics
-Metric	Description
-Cosine Similarity	Semantic alignment between query and chunks
-Coverage Score	Overlap between query terms and retrieved context
-Chunk Count	Number of evidence chunks used
-Generation Quality Metrics
-Metric	Description
-Grounding Score	Semantic overlap between answer and context
-Semantic Support	Whether answer is supported by retrieved evidence
-Hallucination Risk	Inferred from grounding + coverage
+Retrieval Metrics
+
+Cosine similarity score
+
+Coverage score (query vs context)
+
+Number of evidence chunks used
+
+Generation Metrics
+
+Grounding score (answer vs context)
+
+Semantic support validation
+
+Hallucination rejection
+
 Cost Metrics
-Metric	Description
-Token Count	Estimated tokens used
-Cost (USD)	Approximate inference cost
+
+Estimated token usage
+
+Estimated cost in USD
+
 Explainability
 
-Each response includes a structured explanation:
+Each response includes:
 
 Selected RAG strategy
 
@@ -203,9 +194,11 @@ Number of query rewrites
 
 Retrieval confidence
 
-Grounding decision
+Grounding score
 
 Acceptance or rejection reason
+
+Sources used
 
 Example:
 
@@ -215,141 +208,28 @@ Retrieved evidence chunks: 3
 Grounding score: 0.62
 Answer accepted based on semantic support
 
-Design Considerations
-
-Semantic-first over keyword heuristics
-
-Reject only when semantically unsupported
-
-No reliance on section headers
-
-LangGraph-free for production simplicity
-
-Modular RAG strategies
-
-Explainability as a first-class citizen
-
-Use Cases
-
-FinOps knowledge assistants
-
-Cloud cost governance copilots
-
-Internal engineering knowledge systems
-
-Enterprise documentation Q&A
-
-Cost anomaly and forecasting explanation engines
-
-Conclusion
-
-This project demonstrates that semantic-first adaptive RAG pipelines significantly improve reliability, explainability, and robustness for domain-specific knowledge systems like FinOps. By integrating Self-RAG, Adaptive-RAG, and Corrective-RAG without orchestration frameworks, the system remains both powerful and deployable.
-
-
----
-
-## Features
-
-- RAG pipeline with vector search and semantic reranking
-- Automatic ingestion of .txt documents from the data folder
-- Persistent ChromaDB vector database
-- High-quality HuggingFace MiniLM embeddings
-- Token-based and paragraph-based text chunking
-- LLM fallback chain: OpenAI → Groq → Retrieval-only
-- Clean architecture with separate modules for vector DB and app logic
-- Environment-driven configuration through .env
-
----
-
-## Project Structure
-
-```
-project/
-│
-├── data/                      # Input documents (.txt files)
-│       └── *.txt
-│
-├── chroma_store/              # Auto-persisted ChromaDB files
+Project Structure
+ReadyTensor_Project/
 │
 ├── src/
-│       ├── app.py             # Main RAG application
-│       └── vectordb.py        # Vector DB wrapper (Chroma + HF + reranker)
+│   ├── app.py               # Main RAG application
+│   ├── vectordb.py          # Vector DB abstraction
 │
-├── .env                       # Configuration keys and model selection
+├── data/
+│   ├── finops.txt
+│   ├── cloud_cost_analysis.txt
+│   ├── cloud_predictive_analysis.txt
+│   └── ...
+│
+├── chroma_store/             # Persistent vector store
+├── .env                      # Environment variables
+├── requirements.txt
 └── README.md
-```
 
----
-
-## Architecture Overview
-
-sequenceDiagram
-    participant User
-    participant QueryRewriter
-    participant ComplexityClassifier
-    participant RAGController
-    participant Retriever
-    participant VectorDB
-    participant LLM
-    participant Evaluator
-    participant Explainer
-
-    User->>QueryRewriter: Submit Query
-    QueryRewriter->>ComplexityClassifier: Rewritten Query
-    ComplexityClassifier->>RAGController: Complexity Label
-
-    RAGController->>Retriever: Retrieval Request
-    Retriever->>VectorDB: Similarity Search
-    VectorDB-->>Retriever: Relevant Chunks
-    Retriever-->>RAGController: Reranked Context
-
-    RAGController->>LLM: Generate Answer
-    LLM-->>Evaluator: Draft Answer
-    Evaluator->>Evaluator: Grounding & Coverage Check
-
-    alt Supported
-        Evaluator->>Explainer: Accepted Answer
-    else Unsupported
-        Evaluator->>RAGController: Escalate / Rewrite
-    end
-
-    Explainer-->>User: Answer + Metrics + Explanation
-
-
-### 1. Document Ingestion
-- Loads all .txt files from the data directory.
-- Splits documents into meaningful chunks:
-  - Paragraph-based chunking
-  - Token-based chunking using RecursiveCharacterTextSplitter
-
-### 2. Embedding Layer
-- Generates normalized embeddings using HuggingFace MiniLM.
-- Implemented via langchain-huggingface.
-
-### 3. Vector Store
-- Stores embeddings using Chroma from langchain-chroma.
-- Data persists automatically inside the chroma_store directory.
-
-### 4. Reranking Layer
-- Uses a CrossEncoder reranker (ms-marco-MiniLM-L-6-v2) to reorder retrieved documents and improve answer accuracy.
-
-### 5. LLM Response Layer
-- Priority order:
-  1. OpenAI (gpt-4o-mini)
-  2. Groq (llama-3.1-8b-instant)
-  3. Retrieval-only fallback if no API keys are available
-
-### 6. Console Interface
-- Simple REPL-style question-and-answer interface.
-- Displays answer, retrieved context, and document sources.
-
----
-
-## Required .env Configuration
+Required .env Configuration
 
 Create a .env file in the project root:
 
-```
 # OpenAI
 OPENAI_API_KEY=your_openai_key
 OPENAI_MODEL=gpt-4o-mini
@@ -363,34 +243,23 @@ EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 
 # Chroma collection name
 CHROMA_COLLECTION_NAME=rag_documents
-```
 
----
-
-## Installation
-
-### 1. Clone the repository
-```
+Installation
+1. Clone the repository
 git clone <your_repo_url>
 cd <project_folder>
-```
 
-### 2. Create and activate a virtual environment
-```
+2. Create and activate virtual environment
 python -m venv venv
-venv\Scripts\activate   # Windows
-```
+venv\Scripts\activate    # Windows
 
-### 3. Upgrade pip
-```
+3. Upgrade pip
 python -m pip install --upgrade pip
-```
 
-### 4. Install dependencies
+4. Install dependencies
 
-Create requirements.txt containing:
+Create requirements.txt:
 
-```
 langchain
 langchain-core
 langchain-community
@@ -410,54 +279,15 @@ python-dotenv
 requests
 pydantic
 typing-extensions
-```
 
-Install them:
 
-```
+Install:
+
 pip install -r requirements.txt
-```
 
----
-
-## Running the Application
-
-```
+Running the Application
 python src/app.py
-```
 
----
+Conclusion
 
-## How It Works
-
-1. Loads all .txt documents from the data folder
-2. Splits them into optimized chunks
-3. Generates embeddings using HuggingFace
-4. Stores vectors in ChromaDB
-5. Retrieves relevant chunks for a query
-6. Reranks them using CrossEncoder
-7. Constructs final context
-8. Generates an answer using available LLMs
-
----
-
-## Resetting the Vector Store
-
-To clear Chroma:
-
-```
-from vectordb import VectorDB
-v = VectorDB("rag_documents", "sentence-transformers/all-MiniLM-L6-v2")
-v.clear_collection()
-```
-
-Or delete the chroma_store folder manually.
-
----
-
-## Notes
-
-- Only .txt files are supported for ingestion.
-- Restart the application after adding new documents.
-- All components run on CPU by default.
-- You can switch to larger embedding models if required.
+This project demonstrates how semantic-first adaptive RAG pipelines significantly improve reliability, explainability, and factual correctness for domain-specific knowledge systems. By combining query rewriting, Self-RAG, Adaptive-RAG, and Corrective-RAG — without orchestration frameworks — the system remains both powerful and deployable.

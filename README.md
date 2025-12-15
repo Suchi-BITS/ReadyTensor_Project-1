@@ -39,32 +39,37 @@ project/
 
 ## Architecture Overview
 
-graph TD
-    U[User Query]
-    QR[Semantic Query Rewriting]
-    QC[Query Complexity Classifier]
-    CP[Corpus Semantic Probe]
-    VS[Vector Store<br/>Chroma + Embeddings]
-    RR[Retrieval & Reranking]
-    LLM[LLM Generation]
-    EV[Semantic Evaluation]
-    DEC[Strategy Decision]
-    OUT[Answer + Metrics + Explainability]
+sequenceDiagram
+    participant User
+    participant QueryRewriter
+    participant ComplexityClassifier
+    participant RAGController
+    participant Retriever
+    participant VectorDB
+    participant LLM
+    participant Evaluator
+    participant Explainer
 
-    U --> QR
-    QR --> QC
-    QC --> CP
+    User->>QueryRewriter: Submit Query
+    QueryRewriter->>ComplexityClassifier: Rewritten Query
+    ComplexityClassifier->>RAGController: Complexity Label
 
-    CP -->|No Retrieval Needed| LLM
-    CP -->|Retrieval Needed| RR
+    RAGController->>Retriever: Retrieval Request
+    Retriever->>VectorDB: Similarity Search
+    VectorDB-->>Retriever: Relevant Chunks
+    Retriever-->>RAGController: Reranked Context
 
-    RR --> VS
-    VS --> RR
-    RR --> LLM
+    RAGController->>LLM: Generate Answer
+    LLM-->>Evaluator: Draft Answer
+    Evaluator->>Evaluator: Grounding & Coverage Check
 
-    LLM --> EV
-    EV --> DEC
-    DEC --> OUT
+    alt Supported
+        Evaluator->>Explainer: Accepted Answer
+    else Unsupported
+        Evaluator->>RAGController: Escalate / Rewrite
+    end
+
+    Explainer-->>User: Answer + Metrics + Explanation
 
 
 ### 1. Document Ingestion

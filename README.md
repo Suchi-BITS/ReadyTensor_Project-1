@@ -10,14 +10,14 @@ This project introduces a **Universal Semantic-First Adaptive RAG** architecture
 
 ## Key Features
 
-- ✅ **Semantic-first retrieval** using cosine similarity (no keyword heuristics)
-- ✅ **Intelligent query rewriting** with semantic expansion
-- ✅ **Self-RAG, Adaptive-RAG, and Corrective-RAG** in one pipeline
-- ✅ **Automatic escalation** between RAG strategies
-- ✅ **Fine-grained retrieval and generation** evaluation metrics
-- ✅ **Human-readable explainability** for every answer
-- ✅ **Domain-agnostic architecture** validated on FinOps corpora
-- ✅ **LangGraph-free**, production-friendly design
+- **Semantic-first retrieval** using cosine similarity (no keyword heuristics)
+- **Intelligent query rewriting** with semantic expansion
+- **Self-RAG, Adaptive-RAG, and Corrective-RAG** in one pipeline
+- **Automatic escalation** between RAG strategies
+- **Fine-grained retrieval and generation** evaluation metrics
+- **Human-readable explainability** for every answer
+- **Domain-agnostic architecture** validated on FinOps corpora
+- **LangGraph-free**, production-friendly design
 
 ---
 
@@ -345,10 +345,4 @@ This project demonstrates that **semantic-first adaptive RAG pipelines** signifi
 
 [Add your license here]
 
-## Contributing
 
-[Add contribution guidelines here]
-
-## Contact
-
-[Add contact information here]

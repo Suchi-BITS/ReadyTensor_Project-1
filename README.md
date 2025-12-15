@@ -346,3 +346,119 @@ This project demonstrates that **semantic-first adaptive RAG pipelines** signifi
 [Add your license here]
 
 
+---
+
+## Sample Run and System Behavior Analysis
+
+This section illustrates how the system behaves for a real user query and how internal RAG strategy selection, evaluation, and explainability work together.
+
+### Example Query
+
+```
+Enter your query: what is Historical Trend Modeling
+```
+
+### Retrieval Phase (Observed Logs)
+
+```
+Initial retrieval: 20 docs — reranking...
+Reranked, top score = 0.500
+
+Initial retrieval: 20 docs — reranking...
+Reranked, top score = 0.500
+
+Initial retrieval: 20 docs — reranking...
+Reranked, top score = 1.000
+```
+
+**Interpretation:**
+
+- The system applied query rewriting multiple times to improve semantic recall.
+- Early rewrites produced moderate semantic similarity (0.5).
+- A later rewrite achieved strong semantic alignment (1.0) with a relevant document section.
+- This confirms the effectiveness of semantic query reformulation before escalating RAG strategies.
+
+### Generated Answer
+
+```
+The context provided does not define "Historical Trend Modeling." However, it does mention
+analyzing time-series data and using methods like linear regression, exponential smoothing,
+and ARIMA to establish trends and seasonal variations, which could be related to historical
+trend modeling.
+```
+
+**Why this answer is correct and acceptable:**
+
+- The system did not hallucinate a definition.
+- It explicitly stated that no direct definition exists in the corpus.
+- It semantically grounded the answer using closely related concepts present in the source.
+- This reflects responsible generation, prioritizing factual alignment over forced answers.
+
+### RAG Strategy Selection
+
+```
+strategy: SELF_RAG
+Query classified as: SIMPLE
+```
+
+**Why Self-RAG was chosen:**
+
+- The query was short, conceptual, and non-compositional.
+- Semantic similarity exceeded the Self-RAG threshold early.
+- No corrective or multi-step retrieval was required.
+- Self-RAG avoided unnecessary complexity and cost.
+
+### Evaluation Metrics
+
+```
+semantic_support: 0.531
+grounding: 0.465
+coverage: 0.4
+tokens: 231
+cost_usd: 0.000035
+```
+
+### Metric Interpretation
+
+| Metric | Meaning | Interpretation |
+|--------|---------|----------------|
+| Semantic Support | Embedding similarity between query and retrieved context | Strong (above acceptance threshold) |
+| Grounding | Lexical overlap between answer and context | Moderate (diagnostic only) |
+| Coverage | Fraction of query concepts supported by context | Partial but sufficient |
+| Tokens | Total tokens used for retrieval + generation | Efficient |
+| Cost | Estimated LLM cost | Negligible |
+
+**Key Insight:** Even though grounding and coverage were not perfect, semantic support was strong, which is the primary acceptance criterion in a semantic-first RAG system.
+
+### Explainability Output
+
+```
+- RAG strategy used: SELF_RAG
+- Query classified as: SIMPLE
+- Query rewrites applied: 3
+- Retrieved evidence chunks: 2
+- Semantic support score: 0.531
+- Grounding score (diagnostic): 0.465
+- Coverage score (diagnostic): 0.4
+- Answer accepted because semantic support exceeded threshold
+- Estimated tokens used: 231
+- Estimated cost (USD): 3.5e-05
+```
+
+**Why this matters:**
+
+- The system exposes every internal decision.
+- Users can see why an answer was accepted.
+- Engineers can audit:
+  - Rewrite effectiveness
+  - Retrieval sufficiency
+  - Acceptance criteria
+- This is critical for enterprise FinOps, compliance, and trust.
+
+### Key Takeaways from This Run
+
+- Semantic similarity is prioritized over rigid keyword matching.
+- Definitions are not hallucinated when absent.
+- Self-RAG efficiently handles simple conceptual queries.
+- Diagnostic metrics are reported without blocking valid answers.
+- Explainability enables full transparency.

@@ -166,20 +166,27 @@ Corrective-RAG activates when grounding fails and applies query rewriting and re
 
 ```mermaid
 flowchart TD
+flowchart LR
     Q[Query]
     R1[Initial Retrieval]
     G1[Generate]
     E1[Grounding Check]
-
     RW[Rewrite Query]
     R2[Corrective Retrieval]
     G2[Regenerate]
     E2[Final Check]
+    ACCEPT[Accept]
+    REJECT[Reject]
 
-    Q --> R1 --> G1 --> E1
-    E1 -->|Fail| RW --> R2 --> G2 --> E2
-    E2 -->|Pass| ACCEPT[Accept]
-    E2 -->|Fail| REJECT[Reject]
+    Q --> R1
+    R1 --> G1
+    G1 --> E1
+    E1 -->|Fail| RW
+    RW --> R2
+    R2 --> G2
+    G2 --> E2
+    E2 -->|Pass| ACCEPT
+    E2 -->|Fail| REJECT
 ```
 
 ---
